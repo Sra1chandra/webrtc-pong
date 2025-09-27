@@ -213,6 +213,8 @@ function setupPeerConnection() {
     if (host) {
       roomId = id;
       document.querySelector('#box3 h2').innerHTML = 'Room ID: ' + roomId;
+      // Update URL hash
+      window.location.hash = roomId;
     }
   });
 
@@ -224,6 +226,7 @@ function setupPeerConnection() {
 
   peer.on('error', function(err) {
     console.error('Peer error:', err);
+    alert('Connection error: ' + err.message);
   });
 }
 
@@ -484,13 +487,51 @@ joinBtn1.onclick = function(){
 
 joinBtn2.onclick = function(){
   host = false;
-  roomId = conid.value;
+  roomId = conid.value.trim();
+  
+  if (!roomId) {
+    alert('Please enter a Room ID');
+    return false;
+  }
+  
   setupPeerConnection();
   
   // Wait for peer to be ready, then connect
   peer.on('open', function() {
+    console.log('Attempting to connect to:', roomId);
     conn = peer.connect(roomId);
-    setupConnection();
+    
+    conn.on('open', function() {
+      console.log('Connection established');
+      connected = true;
+      requestAnimationFrame(draw);
+      box1.style.display = 'none';
+      box2.style.display = 'none';
+      box3.style.display = 'none';
+      box4.style.display = 'block';
+      
+      // Send version check
+      send({type: "version", version});
+    });
+    
+    conn.on('data', function(data) {
+      try {
+        const message = JSON.parse(data);
+        handleMessage(message);
+      } catch (e) {
+        console.error('Error parsing message:', e);
+      }
+    });
+    
+    conn.on('close', function() {
+      console.log('Connection closed');
+      connected = false;
+    });
+    
+    conn.on('error', function(err) {
+      console.error('Connection error:', err);
+      alert('Failed to connect to room. Please check the Room ID.');
+    });
   });
   
   box2.innerHTML = 'Connecting...';
@@ -535,6 +576,12 @@ canvas.ontouchmove=function(e){
 
 window.onload=window.onresize=function(){
   scaleFactor=Math.max(1,w/(window.innerWidth-16),h/(window.innerHeight*0.98))
+  
+  // Check if there's a room ID in the URL hash
+  const hash = window.location.hash.substring(1);
+  if (hash && hash !== 'NaN') {
+    conid.value = hash;
+  }
 }
 
 
