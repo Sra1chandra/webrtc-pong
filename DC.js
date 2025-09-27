@@ -1,7 +1,8 @@
-const DC={id:null, dc:null, me:null, you:null, log:function(){}};
+const DC={id:null, dc:null, me:null, you:null, log:function(){}, URL:'signal.php'};
 
 (function(){
-  URL='signal.php';
+  // Use the URL from DC object, which can be configured externally
+  URL = DC.URL;
 
   let oldId = window.location.hash.match(/^#([1-9]\d{3})$/);
   if (oldId) DC.id = oldId[1];
