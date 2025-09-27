@@ -120,6 +120,7 @@ ball={x:0,y:-20,speed:0,hspeed:0,vspeed:0}
 let peer = null;
 let conn = null;
 let roomId = null;
+let stateSyncInterval = null;
 
 function objcopy(o){
   let copy = {}
@@ -198,7 +199,14 @@ function send(o){
   o.t2 = timePair.t2
   o.tSend=performance.now()
   if (conn && conn.open) {
-    conn.send(JSON.stringify(o));
+    try {
+      conn.send(JSON.stringify(o));
+    } catch (e) {
+      console.error('Error sending message:', e);
+      connected = false;
+    }
+  } else {
+    console.warn('Cannot send message - connection not open');
   }
 }
 
@@ -328,26 +336,43 @@ function setupConnection() {
     
     // Start periodic state synchronization (every 3 seconds)
     if (host) {
-      setInterval(() => {
+      // Clear any existing interval
+      if (stateSyncInterval) {
+        clearInterval(stateSyncInterval);
+      }
+      stateSyncInterval = setInterval(() => {
         if (connected) {
           sendGameState();
         }
       }, 3000);
     }
+    
+    // Start heartbeat to keep connection alive (every 10 seconds)
+    setInterval(() => {
+      if (connected) {
+        send({type: "heartbeat", timestamp: Date.now()});
+      }
+    }, 10000);
   });
 
   conn.on('data', function(data) {
     try {
       const message = JSON.parse(data);
+      console.log('Received message:', message.type, message);
       handleMessage(message);
     } catch (e) {
-      console.error('Error parsing message:', e);
+      console.error('Error parsing message:', e, 'Raw data:', data);
     }
   });
 
   conn.on('close', function() {
     console.log('Connection closed');
     connected = false;
+    // Clear state sync interval
+    if (stateSyncInterval) {
+      clearInterval(stateSyncInterval);
+      stateSyncInterval = null;
+    }
   });
 
   conn.on('error', function(err) {
@@ -437,6 +462,10 @@ function handleMessage(data) {
         console.log('Sending game state to requesting player');
         sendGameState();
       }
+      break;
+    case "heartbeat":
+      // Respond to heartbeat to keep connection alive
+      console.log('Received heartbeat from peer');
       break;
   }
 }
@@ -636,14 +665,15 @@ joinBtn2.onclick = function(){
     conn.on('data', function(data) {
       try {
         const message = JSON.parse(data);
+        console.log('Received message (join):', message.type, message);
         handleMessage(message);
       } catch (e) {
-        console.error('Error parsing message:', e);
+        console.error('Error parsing message (join):', e, 'Raw data:', data);
       }
     });
     
     conn.on('close', function() {
-      console.log('Connection closed');
+      console.log('Connection closed (join)');
       connected = false;
     });
     
