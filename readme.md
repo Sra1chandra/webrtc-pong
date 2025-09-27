@@ -37,6 +37,16 @@ This repository includes multiple hosting options for the WebRTC Pong game:
 
 3. **That's it!** No backend, no database, no configuration needed.
 
+## Testing the Game
+
+**Important:** WebRTC peer-to-peer connections require different devices or browsers. You cannot connect to yourself from the same browser.
+
+### Testing Options:
+- **Different browsers**: Chrome + Firefox
+- **Incognito windows**: Normal + Incognito mode
+- **Different devices**: Computer + Phone/Tablet
+- **Different computers**: Any two separate devices
+
 ## Files Structure
 
 - `index.html` - **Main game file (No backend required - uses PeerJS)**
