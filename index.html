@@ -121,6 +121,7 @@ let peer = null;
 let conn = null;
 let roomId = null;
 let stateSyncInterval = null;
+let stateSyncInProgress = false;
 
 function objcopy(o){
   let copy = {}
@@ -229,41 +230,58 @@ function sendGameState() {
 function applyGameState(state) {
   console.log('Applying game state:', state);
   
-  // Apply all game state variables
-  scoreLeft = state.scoreLeft;
-  scoreRight = state.scoreRight;
-  ball = objcopy(state.ball);
-  left.y = state.leftY;
-  right.y = state.rightY;
-  frameNumber = state.frameNumber;
-  seed = state.seed;
-  
-  // Reset input buffers to match current frame
-  myInputs = [];
-  yoInputs = [];
-  rollbackInputs = [];
-  
-  // Reinitialize buffer with current frame
-  for (let i = 0; i < bufferSize; i++) {
-    myInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
-    yoInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
+  // Prevent multiple state syncs from interfering
+  if (stateSyncInProgress) {
+    console.log('State sync already in progress, ignoring');
+    return;
   }
   
-  console.log('Game state synchronized - Scores:', scoreLeft, 'vs', scoreRight, 'Frame:', frameNumber);
-  
-  // Restart game frame processing if it's not running
-  if (connected) {
-    console.log('Restarting game frame processing after state sync');
-    nextFrame = performance.now() + frameLength;
-    setTimeout(processFrame, frameLength);
+  // Only apply state if we're not already in a game or if this is a significant change
+  if (frameNumber < 100 || Math.abs(state.frameNumber - frameNumber) > 10) {
+    stateSyncInProgress = true;
+    // Apply all game state variables
+    scoreLeft = state.scoreLeft;
+    scoreRight = state.scoreRight;
+    ball = objcopy(state.ball);
+    left.y = state.leftY;
+    right.y = state.rightY;
+    frameNumber = state.frameNumber;
+    seed = state.seed;
+    
+    // Reset input buffers to match current frame
+    myInputs = [];
+    yoInputs = [];
+    rollbackInputs = [];
+    
+    // Reinitialize buffer with current frame
+    for (let i = 0; i < bufferSize; i++) {
+      myInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
+      yoInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
+    }
+    
+    console.log('Game state synchronized - Scores:', scoreLeft, 'vs', scoreRight, 'Frame:', frameNumber);
+    
+    // Restart game frame processing if it's not running
+    if (connected) {
+      console.log('Restarting game frame processing after state sync');
+      nextFrame = performance.now() + frameLength;
+      setTimeout(processFrame, frameLength);
+    }
+    
+    // Show brief sync indicator
+    const syncMsg = document.createElement('div');
+    syncMsg.innerHTML = `Game synchronized! Score: ${scoreLeft} - ${scoreRight}`;
+    syncMsg.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,255,0,0.8);color:white;padding:10px;border-radius:5px;z-index:1000;';
+    document.body.appendChild(syncMsg);
+    setTimeout(() => syncMsg.remove(), 3000);
+    
+    // Reset sync flag after a delay
+    setTimeout(() => {
+      stateSyncInProgress = false;
+    }, 2000);
+  } else {
+    console.log('Ignoring redundant state sync - game already in progress');
   }
-  
-  // Show brief sync indicator
-  const syncMsg = document.createElement('div');
-  syncMsg.innerHTML = `Game synchronized! Score: ${scoreLeft} - ${scoreRight}`;
-  syncMsg.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,255,0,0.8);color:white;padding:10px;border-radius:5px;z-index:1000;';
-  document.body.appendChild(syncMsg);
-  setTimeout(() => syncMsg.remove(), 3000);
 }
 function avg(a){
   return a.reduce((x,y)=>x+y)/a.length
@@ -341,17 +359,17 @@ function setupConnection() {
       }, 500);
     }
     
-    // Start periodic state synchronization (every 3 seconds)
+    // Start periodic state synchronization (every 10 seconds, only if game is active)
     if (host) {
       // Clear any existing interval
       if (stateSyncInterval) {
         clearInterval(stateSyncInterval);
       }
       stateSyncInterval = setInterval(() => {
-        if (connected) {
+        if (connected && frameNumber > 100) { // Only sync if game has progressed past intro
           sendGameState();
         }
-      }, 3000);
+      }, 10000);
     }
     
     // Start heartbeat to keep connection alive (every 10 seconds)
