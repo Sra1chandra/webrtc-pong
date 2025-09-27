@@ -122,6 +122,8 @@ let conn = null;
 let roomId = null;
 let stateSyncInterval = null;
 let stateSyncInProgress = false;
+let hasReceivedInitialState = false;
+let hasSentInitialState = false;
 
 function objcopy(o){
   let copy = {}
@@ -230,15 +232,20 @@ function sendGameState() {
 function applyGameState(state) {
   console.log('Applying game state:', state);
   
+  // Only apply state sync once when joining, not during ongoing game
+  if (hasReceivedInitialState) {
+    console.log('Already received initial state, ignoring subsequent syncs');
+    return;
+  }
+  
   // Prevent multiple state syncs from interfering
   if (stateSyncInProgress) {
     console.log('State sync already in progress, ignoring');
     return;
   }
   
-  // Only apply state if we're not already in a game
-  if (frameNumber < 50) {
-    stateSyncInProgress = true;
+  stateSyncInProgress = true;
+  hasReceivedInitialState = true;
     // Apply all game state variables
     scoreLeft = state.scoreLeft;
     scoreRight = state.scoreRight;
@@ -472,10 +479,13 @@ function handleMessage(data) {
       applyGameState(data);
       break;
     case "requestState":
-      // Send current game state to requesting player immediately
-      if (host) {
+      // Send current game state to requesting player immediately (only once)
+      if (host && !hasSentInitialState) {
         console.log('Sending game state to requesting player');
         sendGameState();
+        hasSentInitialState = true;
+      } else if (host) {
+        console.log('Already sent initial state, ignoring request');
       }
       break;
     case "heartbeat":
