@@ -274,6 +274,11 @@ function applyGameState(state) {
     vspeed: ball.vspeed
   });
   
+  // Stop current frame processing to prevent conflicts
+  if (connected) {
+    console.log('Stopping frame processing for state sync');
+  }
+  
   // Apply all game state variables
   scoreLeft = state.scoreLeft;
   scoreRight = state.scoreRight;
@@ -290,41 +295,61 @@ function applyGameState(state) {
     hspeed: ball.hspeed,
     vspeed: ball.vspeed
   });
-    
-    // Reset input buffers to match current frame
-    myInputs = [];
-    yoInputs = [];
-    rollbackInputs = [];
-    
-    // Reinitialize buffer with current frame
-    for (let i = 0; i < bufferSize; i++) {
-      myInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
-      yoInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
-    }
-    
-    console.log('Game state synchronized - Scores:', scoreLeft, 'vs', scoreRight, 'Frame:', frameNumber);
-    
-    // Restart game frame processing if it's not running
-    if (connected) {
-      console.log('Restarting game frame processing after state sync');
-      nextFrame = performance.now() + frameLength;
-      setTimeout(processFrame, frameLength);
-    }
-    
-    // Show brief sync indicator
-    const syncMsg = document.createElement('div');
-    syncMsg.innerHTML = `Game synchronized! Score: ${scoreLeft} - ${scoreRight}`;
-    syncMsg.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,255,0,0.8);color:white;padding:10px;border-radius:5px;z-index:1000;';
-    document.body.appendChild(syncMsg);
-    setTimeout(() => syncMsg.remove(), 3000);
-    
-    // Reset sync flag after a delay
-    setTimeout(() => {
-      stateSyncInProgress = false;
-    }, 2000);
-  } else {
-    console.log('Ignoring redundant state sync - game already in progress');
+  
+  // Reset input buffers to match current frame - CRITICAL for sync
+  myInputs = [];
+  yoInputs = [];
+  rollbackInputs = [];
+  
+  // Reinitialize buffer with current frame - ensure proper alignment
+  for (let i = 0; i < bufferSize; i++) {
+    myInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
+    yoInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
   }
+  
+  // Reset rollback state to match current game state
+  rollbackState = {
+    frame: frameNumber - 1,
+    seed: seed,
+    scoreLeft: scoreLeft,
+    scoreRight: scoreRight,
+    ball: deepCopyBall(ball),
+    leftY: left.y,
+    rightY: right.y
+  };
+  
+  // Reset timing variables to prevent drift
+  nextFrame = performance.now() + frameLength;
+  leadStack = [];
+  yoInputLastDir = 0;
+  
+  // Ensure deterministic random seed is applied
+  if (typeof Math.seedrandom !== 'undefined') {
+    Math.seedrandom(seed.toString());
+  }
+  
+  console.log('Game state synchronized - Scores:', scoreLeft, 'vs', scoreRight, 'Frame:', frameNumber);
+  console.log('Input buffers reset with', myInputs.length, 'frames');
+  
+  // Restart game frame processing with clean state
+  if (connected) {
+    console.log('Restarting game frame processing after state sync');
+    setTimeout(() => {
+      processFrame();
+    }, 100); // Small delay to ensure everything is settled
+  }
+  
+  // Show brief sync indicator
+  const syncMsg = document.createElement('div');
+  syncMsg.innerHTML = `Game synchronized! Score: ${scoreLeft} - ${scoreRight}`;
+  syncMsg.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,255,0,0.8);color:white;padding:10px;border-radius:5px;z-index:1000;';
+  document.body.appendChild(syncMsg);
+  setTimeout(() => syncMsg.remove(), 3000);
+  
+  // Reset sync flag after a delay
+  setTimeout(() => {
+    stateSyncInProgress = false;
+  }, 2000);
 }
 function avg(a){
   return a.reduce((x,y)=>x+y)/a.length
@@ -411,6 +436,15 @@ function setupConnection() {
         send({type: "heartbeat", timestamp: Date.now()});
       }
     }, 10000);
+    
+    // Periodic state verification (every 30 seconds) to catch drift
+    setInterval(() => {
+      if (connected && host) {
+        console.log('Periodic state verification - Frame:', frameNumber, 'Scores:', scoreLeft, '-', scoreRight);
+        // Send a lightweight state check
+        send({type: "stateCheck", frameNumber: frameNumber, scoreLeft: scoreLeft, scoreRight: scoreRight});
+      }
+    }, 30000);
   });
 
   conn.on('data', function(data) {
@@ -528,6 +562,26 @@ function handleMessage(data) {
       // Respond to heartbeat to keep connection alive
       console.log('Received heartbeat from peer');
       break;
+    case "stateCheck":
+      // Verify state consistency
+      console.log('State check received - Host Frame:', data.frameNumber, 'Scores:', data.scoreLeft, '-', data.scoreRight);
+      console.log('My Frame:', frameNumber, 'Scores:', scoreLeft, '-', scoreRight);
+      
+      // Check for significant drift
+      if (Math.abs(frameNumber - data.frameNumber) > 10) {
+        console.log('Frame drift detected! Requesting state resync');
+        if (!host) {
+          send({type: "requestState"});
+        }
+      }
+      
+      if (scoreLeft !== data.scoreLeft || scoreRight !== data.scoreRight) {
+        console.log('Score mismatch detected! Requesting state resync');
+        if (!host) {
+          send({type: "requestState"});
+        }
+      }
+      break;
   }
 }
 
@@ -565,10 +619,18 @@ function processFrame(){
   myInput = myInputs.shift()
 
   if (myInput.frame != yoInput.frame) {
-    console.log("SYNC ERROR AHHH", myInput,yoInput); 
+    console.log("SYNC ERROR - Frame mismatch:", myInput.frame, "vs", yoInput.frame); 
     // Instead of returning, try to recover by using the last known input
     yoInput = {frame: myInput.frame, dir: yoInputLastDir};
     console.log("Recovering with last known input:", yoInput);
+    
+    // If we're still having sync issues, try to resync
+    if (Math.abs(myInput.frame - yoInput.frame) > 5) {
+      console.log("Major sync error detected, requesting state resync");
+      if (!host && !hasReceivedInitialState) {
+        send({type: "requestState"});
+      }
+    }
   }
 
   processGameLogic(myInput,yoInput)
