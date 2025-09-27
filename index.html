@@ -32,6 +32,7 @@ h1 span{animation: flicker 0.5s linear both;}
 <p><button id="joinBtn1">Join Game</button>
 <p><a href=https://github.com/jssschandra/webrtc-pong>source code</a> &bull; <a href=https://github.com/jssschandra/webrtc-pong#hosting>hosting guide</a>
 <p><small>No backend required - works entirely in the browser!</small>
+<p><small><strong>Note:</strong> For testing, use different browsers or devices. Same browser can't connect to itself.</small>
 </div>
 
 <form id=box2 style='display:none;padding:20px;'>
@@ -200,6 +201,39 @@ function send(o){
     conn.send(JSON.stringify(o));
   }
 }
+
+// Game state synchronization
+function sendGameState() {
+  const gameState = {
+    type: "gameState",
+    scoreLeft: scoreLeft,
+    scoreRight: scoreRight,
+    ball: objcopy(ball),
+    leftY: left.y,
+    rightY: right.y,
+    frameNumber: frameNumber,
+    seed: seed
+  };
+  send(gameState);
+}
+
+function applyGameState(state) {
+  scoreLeft = state.scoreLeft;
+  scoreRight = state.scoreRight;
+  ball = objcopy(state.ball);
+  left.y = state.leftY;
+  right.y = state.rightY;
+  frameNumber = state.frameNumber;
+  seed = state.seed;
+  console.log('Game state synchronized:', state);
+  
+  // Show brief sync indicator
+  const syncMsg = document.createElement('div');
+  syncMsg.innerHTML = 'Game state synchronized!';
+  syncMsg.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,255,0,0.8);color:white;padding:10px;border-radius:5px;z-index:1000;';
+  document.body.appendChild(syncMsg);
+  setTimeout(() => syncMsg.remove(), 2000);
+}
 function avg(a){
   return a.reduce((x,y)=>x+y)/a.length
 }
@@ -246,6 +280,8 @@ function setupPeerConnection() {
       errorMessage = 'Network error. Please check your internet connection.';
     } else if (err.type === 'peer-unavailable') {
       errorMessage = 'Could not connect to the room. Please check the Room ID.';
+    } else if (err.type === 'connection-closed') {
+      errorMessage = 'Connection closed. This might happen if trying to connect from the same browser. Try using a different browser or device.';
     }
     
     alert(errorMessage);
@@ -266,6 +302,18 @@ function setupConnection() {
     if (!host) {
       send({type: "version", version});
     }
+    
+    // Request game state from host if joining
+    if (!host) {
+      send({type: "requestState"});
+    }
+    
+    // Start periodic state synchronization (every 5 seconds)
+    setInterval(() => {
+      if (connected && host) {
+        sendGameState();
+      }
+    }, 5000);
   });
 
   conn.on('data', function(data) {
@@ -358,6 +406,16 @@ function handleMessage(data) {
       let leadTime = nextFrame - otherNextFrame - frameDifference;
       leadStack.push(leadTime);
       if (leadStack.length > stacksize) leadStack.shift();
+      break;
+    case "gameState":
+      // Apply received game state
+      applyGameState(data);
+      break;
+    case "requestState":
+      // Send current game state to requesting player
+      if (host) {
+        sendGameState();
+      }
       break;
   }
 }
@@ -547,6 +605,9 @@ joinBtn2.onclick = function(){
       
       // Send version check
       send({type: "version", version});
+      
+      // Request game state from host
+      send({type: "requestState"});
     });
     
     conn.on('data', function(data) {
