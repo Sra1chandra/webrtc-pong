@@ -206,7 +206,17 @@ function avg(a){
 
 // PeerJS connection handling
 function setupPeerConnection() {
-  peer = new Peer();
+  // Configure PeerJS for GitHub Pages HTTPS environment
+  peer = new Peer({
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' }
+      ]
+    },
+    debug: 3
+  });
   
   peer.on('open', function(id) {
     console.log('Peer ID:', id);
@@ -226,7 +236,19 @@ function setupPeerConnection() {
 
   peer.on('error', function(err) {
     console.error('Peer error:', err);
-    alert('Connection error: ' + err.message);
+    console.error('Error type:', err.type);
+    console.error('Error code:', err.code);
+    
+    let errorMessage = 'Connection error: ' + err.message;
+    if (err.type === 'unavailable-id') {
+      errorMessage = 'Room ID is already in use. Please try a different one.';
+    } else if (err.type === 'network') {
+      errorMessage = 'Network error. Please check your internet connection.';
+    } else if (err.type === 'peer-unavailable') {
+      errorMessage = 'Could not connect to the room. Please check the Room ID.';
+    }
+    
+    alert(errorMessage);
   });
 }
 
@@ -496,13 +518,26 @@ joinBtn2.onclick = function(){
   
   setupPeerConnection();
   
+  // Set a timeout for connection
+  const connectionTimeout = setTimeout(() => {
+    if (!connected) {
+      alert('Connection timeout. Please check the Room ID and try again.');
+      box2.innerHTML = 'Enter Room ID: <input id="conid" size=8><button id="joinBtn2">Join</button>';
+      // Re-attach event listener
+      document.getElementById('joinBtn2').onclick = joinBtn2.onclick;
+    }
+  }, 10000); // 10 second timeout
+  
   // Wait for peer to be ready, then connect
   peer.on('open', function() {
     console.log('Attempting to connect to:', roomId);
-    conn = peer.connect(roomId);
+    conn = peer.connect(roomId, {
+      reliable: true
+    });
     
     conn.on('open', function() {
       console.log('Connection established');
+      clearTimeout(connectionTimeout);
       connected = true;
       requestAnimationFrame(draw);
       box1.style.display = 'none';
@@ -530,7 +565,11 @@ joinBtn2.onclick = function(){
     
     conn.on('error', function(err) {
       console.error('Connection error:', err);
-      alert('Failed to connect to room. Please check the Room ID.');
+      clearTimeout(connectionTimeout);
+      alert('Failed to connect to room. Please check the Room ID and try again.');
+      box2.innerHTML = 'Enter Room ID: <input id="conid" size=8><button id="joinBtn2">Join</button>';
+      // Re-attach event listener
+      document.getElementById('joinBtn2').onclick = joinBtn2.onclick;
     });
   });
   
