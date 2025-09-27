@@ -236,8 +236,8 @@ function applyGameState(state) {
     return;
   }
   
-  // Only apply state if we're not already in a game or if this is a significant change
-  if (frameNumber < 100 || Math.abs(state.frameNumber - frameNumber) > 10) {
+  // Only apply state if we're not already in a game
+  if (frameNumber < 50) {
     stateSyncInProgress = true;
     // Apply all game state variables
     scoreLeft = state.scoreLeft;
@@ -359,18 +359,8 @@ function setupConnection() {
       }, 500);
     }
     
-    // Start periodic state synchronization (every 10 seconds, only if game is active)
-    if (host) {
-      // Clear any existing interval
-      if (stateSyncInterval) {
-        clearInterval(stateSyncInterval);
-      }
-      stateSyncInterval = setInterval(() => {
-        if (connected && frameNumber > 100) { // Only sync if game has progressed past intro
-          sendGameState();
-        }
-      }, 10000);
-    }
+    // Disable automatic state sync to prevent interference with normal gameplay
+    // State sync will only happen when explicitly requested by joining players
     
     // Start heartbeat to keep connection alive (every 10 seconds)
     setInterval(() => {
