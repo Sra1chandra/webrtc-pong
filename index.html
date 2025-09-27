@@ -214,10 +214,14 @@ function sendGameState() {
     frameNumber: frameNumber,
     seed: seed
   };
+  console.log('Sending game state:', gameState);
   send(gameState);
 }
 
 function applyGameState(state) {
+  console.log('Applying game state:', state);
+  
+  // Apply all game state variables
   scoreLeft = state.scoreLeft;
   scoreRight = state.scoreRight;
   ball = objcopy(state.ball);
@@ -225,14 +229,26 @@ function applyGameState(state) {
   right.y = state.rightY;
   frameNumber = state.frameNumber;
   seed = state.seed;
-  console.log('Game state synchronized:', state);
+  
+  // Reset input buffers to match current frame
+  myInputs = [];
+  yoInputs = [];
+  rollbackInputs = [];
+  
+  // Reinitialize buffer with current frame
+  for (let i = 0; i < bufferSize; i++) {
+    myInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
+    yoInputs.push({ frame: frameNumber - bufferSize + i, dir: 0 });
+  }
+  
+  console.log('Game state synchronized - Scores:', scoreLeft, 'vs', scoreRight, 'Frame:', frameNumber);
   
   // Show brief sync indicator
   const syncMsg = document.createElement('div');
-  syncMsg.innerHTML = 'Game state synchronized!';
+  syncMsg.innerHTML = `Game synchronized! Score: ${scoreLeft} - ${scoreRight}`;
   syncMsg.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:rgba(0,255,0,0.8);color:white;padding:10px;border-radius:5px;z-index:1000;';
   document.body.appendChild(syncMsg);
-  setTimeout(() => syncMsg.remove(), 2000);
+  setTimeout(() => syncMsg.remove(), 3000);
 }
 function avg(a){
   return a.reduce((x,y)=>x+y)/a.length
@@ -303,17 +319,21 @@ function setupConnection() {
       send({type: "version", version});
     }
     
-    // Request game state from host if joining
+    // Request game state from host if joining (with small delay)
     if (!host) {
-      send({type: "requestState"});
+      setTimeout(() => {
+        send({type: "requestState"});
+      }, 500);
     }
     
-    // Start periodic state synchronization (every 5 seconds)
-    setInterval(() => {
-      if (connected && host) {
-        sendGameState();
-      }
-    }, 5000);
+    // Start periodic state synchronization (every 3 seconds)
+    if (host) {
+      setInterval(() => {
+        if (connected) {
+          sendGameState();
+        }
+      }, 3000);
+    }
   });
 
   conn.on('data', function(data) {
@@ -412,8 +432,9 @@ function handleMessage(data) {
       applyGameState(data);
       break;
     case "requestState":
-      // Send current game state to requesting player
+      // Send current game state to requesting player immediately
       if (host) {
+        console.log('Sending game state to requesting player');
         sendGameState();
       }
       break;
@@ -606,8 +627,10 @@ joinBtn2.onclick = function(){
       // Send version check
       send({type: "version", version});
       
-      // Request game state from host
-      send({type: "requestState"});
+      // Request game state from host (with small delay)
+      setTimeout(() => {
+        send({type: "requestState"});
+      }, 500);
     });
     
     conn.on('data', function(data) {
