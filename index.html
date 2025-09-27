@@ -251,6 +251,13 @@ function applyGameState(state) {
   
   console.log('Game state synchronized - Scores:', scoreLeft, 'vs', scoreRight, 'Frame:', frameNumber);
   
+  // Restart game frame processing if it's not running
+  if (connected) {
+    console.log('Restarting game frame processing after state sync');
+    nextFrame = performance.now() + frameLength;
+    setTimeout(processFrame, frameLength);
+  }
+  
   // Show brief sync indicator
   const syncMsg = document.createElement('div');
   syncMsg.innerHTML = `Game synchronized! Score: ${scoreLeft} - ${scoreRight}`;
@@ -503,7 +510,12 @@ function processFrame(){
 
   myInput = myInputs.shift()
 
-  if (myInput.frame != yoInput.frame) {console.log("SYNC ERROR AHHH", myInput,yoInput); return}
+  if (myInput.frame != yoInput.frame) {
+    console.log("SYNC ERROR AHHH", myInput,yoInput); 
+    // Instead of returning, try to recover by using the last known input
+    yoInput = {frame: myInput.frame, dir: yoInputLastDir};
+    console.log("Recovering with last known input:", yoInput);
+  }
 
   processGameLogic(myInput,yoInput)
 
@@ -537,7 +549,11 @@ function processFrame(){
   if (framesync<2 || framesync>15) synctick=-4;
   else synctick=0
 
-  if (connected) setTimeout(processFrame, delay + synctick)
+  if (connected) {
+    setTimeout(processFrame, delay + synctick);
+  } else {
+    console.log('Connection lost, stopping frame processing');
+  }
 }
 
 function processGameLogic(myInput,yoInput){
