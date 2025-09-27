@@ -132,6 +132,17 @@ function objcopy(o){
   }
   return copy
 }
+
+// Deep copy function for ball state to ensure all properties are copied
+function deepCopyBall(ball) {
+  return {
+    x: ball.x,
+    y: ball.y,
+    speed: ball.speed,
+    hspeed: ball.hspeed,
+    vspeed: ball.vspeed
+  };
+}
 function storeRollbackState(){
   rollbackState = {frame:myInputs[0].frame, seed, scoreLeft, scoreRight, ball:objcopy(ball), leftY:left.y, rightY:right.y}
 }
@@ -219,13 +230,21 @@ function sendGameState() {
     type: "gameState",
     scoreLeft: scoreLeft,
     scoreRight: scoreRight,
-    ball: objcopy(ball),
+    ball: deepCopyBall(ball),
     leftY: left.y,
     rightY: right.y,
     frameNumber: frameNumber,
-    seed: seed
+    seed: seed,
+    timestamp: performance.now()
   };
   console.log('Sending game state:', gameState);
+  console.log('Ball details:', {
+    x: ball.x,
+    y: ball.y,
+    speed: ball.speed,
+    hspeed: ball.hspeed,
+    vspeed: ball.vspeed
+  });
   send(gameState);
 }
 
@@ -246,14 +265,31 @@ function applyGameState(state) {
   
   stateSyncInProgress = true;
   hasReceivedInitialState = true;
-    // Apply all game state variables
-    scoreLeft = state.scoreLeft;
-    scoreRight = state.scoreRight;
-    ball = objcopy(state.ball);
-    left.y = state.leftY;
-    right.y = state.rightY;
-    frameNumber = state.frameNumber;
-    seed = state.seed;
+  
+  console.log('Before sync - Ball:', {
+    x: ball.x,
+    y: ball.y,
+    speed: ball.speed,
+    hspeed: ball.hspeed,
+    vspeed: ball.vspeed
+  });
+  
+  // Apply all game state variables
+  scoreLeft = state.scoreLeft;
+  scoreRight = state.scoreRight;
+  ball = deepCopyBall(state.ball);
+  left.y = state.leftY;
+  right.y = state.rightY;
+  frameNumber = state.frameNumber;
+  seed = state.seed;
+  
+  console.log('After sync - Ball:', {
+    x: ball.x,
+    y: ball.y,
+    speed: ball.speed,
+    hspeed: ball.hspeed,
+    vspeed: ball.vspeed
+  });
     
     // Reset input buffers to match current frame
     myInputs = [];
